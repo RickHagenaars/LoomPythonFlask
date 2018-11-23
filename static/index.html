@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>LOOM demo page</title>
+
+    <!-- Bootstrap -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" rel="stylesheet">
+	<link href="https://metricsgraphicsjs.org/metricsgraphics.css" rel="stylesheet">
+  </head>
+	<body class="text-center">
+
+	<div class="cover-container d-flex h-100 p-3 mx-auto flex-column">
+		<header class="masthead mb-auto">
+			<div class="inner">
+				<h3 class="masthead-brand">LOOM Dashboard</h3>
+			</div>
+		</header>
+
+		<main role="main" class="inner cover text-center">
+			<div class="col-sm-6 d-inline-block">
+				<label for="device">Device</label>
+				<select class="form-control" id="device" disabled>
+					<option>Choose device...</option>
+				</select>
+			</div>
+			<div class="clearfix"></div>
+
+			<div class="form-check form-check-inline type-template d-none">
+				<input class="form-check-input" name="type" type="checkbox" value="">
+				<label class="form-check-label"></label>
+			</div>
+			<br />
+			<div class="types"></div>
+
+			<div><button class="refresh">Auto Refresh</button></div>
+			<div id="graph-container"></div>
+		</main>
+	</div>
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"></script>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/metrics-graphics/2.15.6/metricsgraphics.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.11/lodash.core.min.js"></script>
+    <script type="text/javascript">
+		$(document).ready(function($){
+			var graphData = [];
+			var timeseries = [];
+
+			$.getJSON( "/devices", function( devices ) {
+				$.each( devices, function( index, device ) {
+					$("select#device").append("<option>" + device + "</option>")
+				});
+				$("select#device").prop("disabled", false);
+			});
+
+			$("select#device").change(function()
+			{
+				$("div.types, #graph-container").html("");
+				$.getJSON( "/types?device=" + $(this).val(), function( types ) {
+					$.each( types, function( index, type ) {
+						var typeCheckbox = $("div.type-template").clone();
+						typeCheckbox.removeClass("d-none").removeClass("type-template");
+						$("input", typeCheckbox).val(type).attr("id", "checkbox-" + index);
+						$("label", typeCheckbox).text(_.last(type.split("/"))).attr("for", "checkbox-" + index);
+						$("div.types").append(typeCheckbox);
+					});
+				});
+
+				getTimeseries();
+			});
+
+			$(document).on("change", "input[type='checkbox']", function() {
+				drawGraph();
+			});
+
+			$(".refresh").click(function() {
+				setInterval(getTimeseries, 5000);
+				$(this).prop("disabled", true);
+			});
+
+			function getTimeseries()
+			{
+				$.getJSON( "/measurements?device=" + $("select#device").val(), function( measurements ) {
+					timeseries = measurements;
+					drawGraph();
+				});
+			}
+
+			function drawGraph()
+			{
+				var types = [];
+				graphData = [];
+
+			    $('input[type="checkbox"]:checked').each(function() { 
+			        types.push($(this).val());
+			    });
+
+				_.forEach(types, function(type)
+				{
+					graphData.push(_.map(_.filter(timeseries, function(measurement){ return measurement.type == type }), function(measurement){ return { 'date': new Date(measurement.timestamp), 'value': parseFloat(measurement.value) }; }));
+				});
+
+				graphData = _.filter(graphData, function(series){ return series.length > 0; });
+
+				if(graphData.length > 0) {
+					MG.data_graphic({
+						data: graphData,
+						width: 800,
+						height: 400,
+						right: 60,
+						missing_is_hidden: true,
+						target: '#graph-container',
+						legend: _.map(types, function(type){ return _.last(type.split("/")); })
+					});
+				}
+			}
+
+		});
+    </script>
+  </body>
+</html>
